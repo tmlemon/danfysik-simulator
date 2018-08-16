@@ -205,7 +205,7 @@ while cmd != 'STOP':
         print('status =',state)
         print()
         
-        ser.write(str(current).encode())        
+        ser.write(('I'+str(current)).encode())        
         
         count += 1        
         t1 = time.time()
