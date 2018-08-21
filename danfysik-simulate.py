@@ -9,26 +9,20 @@ Development of Python code uses second program run on a second computer
 to send serial commands to PC running Python program. 
 LabVIEW program at O:\DSG\Tyler\C\python\serial-writer.vi can be used
 NI MAX VISA test panel can also be used.
-
-V4 attempts to clean up code and make simulated MPS respond in the syntax of
-the actual MPS.
 """
 
 import serial
 import time
 from time import sleep
 
-
+#function intializess serial connection.
 def serialIntialize(port,timeout):
     try:
         ser = serial.Serial(port,timeout=timeout)
         sleep(1)
-    except serial.serialutil.SerialException:
-        print('error')
-        sleep(1)
-        ser = serial.Serial(port,timeout=timeout)
-        ser.close()
-        ser = serial.Serial(port,timeout=timeout)
+    except:
+        print('Intialization Error')
+
     return ser
 
    
@@ -36,6 +30,7 @@ def serialIntialize(port,timeout):
 #sets up initial conditions for simulated power supply.
 ser = serialIntialize('COM1',1)
 
+#intial conditions on start up of simulated MPS
 state = ['ready']
 dt = 1 #sec
 slew = 1 #A/sec
@@ -54,25 +49,25 @@ while cmd != 'STOP':
 
     sstring0 = ''+'\r'
     sstring1 = ''+'\r'
-    sstring2 = str(current)+'\r'
-    sstring3 = str(round(current,2))+'\r'
-    sstring4 = str(round(current*0.0001,3))+'\r'
-    sstring5 = str(polarity)+'\r'
-    sstring6 = str(iTarget)+'\r'
-    sstring7 = str(slew)+'\r'
-    sstring8 = str(ctrlState)+'\r'
-    sstring9 = str(state[0])+'\r'
+    sstring2 = 'I'+str(current)+'\r'
+    sstring3 = 'i'+str(round(current,2))+'\r'
+    sstring4 = 'V'+str(round(current*0.0001,3))+'\r'
+    sstring5 = 'P'+str(polarity)+'\r'
+    sstring6 = 'T'+str(iTarget)+'\r'
+    sstring7 = 'r'+str(slew)+'\r'
+    sstring8 = 'c'+str(ctrlState)+'\r'
+    sstring9 = 's'+str(state[0])+'\r'
         
     try:
         cmd = ser.read(15).decode().strip()        
         if cmd != '':
             #looks for command to put MPS in local or remote control mode
-            if cmd == 'LOC' or cmd.strip() == 'REM':
+            if cmd == 'LOC' or cmd == 'REM':
                 for i,element in enumerate(state):
                         if element == 'ready':
                             state.remove('ready')
                 state.append('change control')
-                ctrlState = cmd.strip()
+                ctrlState = cmd
             #Status readback commands that should always work, regardless of
             #control state.
             elif cmd == 'AD 8':
@@ -104,8 +99,9 @@ while cmd != 'STOP':
                                 state.remove('ready')
                     if 'ramping' not in state:
                         state.append('ramping')
-                    iTarget = float(cmd[3:].strip())            
-                    margin = 0.005
+                    iTarget = float(cmd[3:].strip())*polarity
+                    #margin = 0.001
+                
                 #changes ramp rate
                 elif 'W1' in cmd:
                     for i,element in enumerate(state):
@@ -113,6 +109,7 @@ while cmd != 'STOP':
                             state.remove('ready')
                     state.append('change slew')
                     slewTarget = float(cmd[3:].strip())                 
+                
                 #change polarity
                 elif 'PO' in cmd and len(cmd) > 2:
                     for i,element in enumerate(state):
@@ -120,10 +117,13 @@ while cmd != 'STOP':
                             state.remove('ready')
                         state.append('change polarity')
                     polTarget = cmd[3:].strip()               
+                
                 else:
                     print('error; unknown command')
+            
             elif 'LOCAL' in state:
                 print('in local control mode')
+            
             else:
                 print('control mode error')
             
@@ -141,56 +141,51 @@ while cmd != 'STOP':
             elif ctrlState == 'REM':
                 state.remove('LOCAL')
                 state.append('ready')
+        
         #ramps magnet to set current
-        if current != iTarget and 'ready' not in state \
-        and 'LOCAL' not in state:
-            #condition to see if MPS is ramped to current.
-            if iTarget-margin <= current <= iTarget+margin:
-                for element in state:
-                    if element == 'ramping':
-                        state.remove('ramping')        
-            
-            #condition for positive ramping
+        if abs(iTarget-current) > 0.001 and 'ready' not in state \
+        and 'LOCAL' not in state and 'ramping' in state:
             #extra cases within allow adjustment of ramp interval to more
-            #precisely reach set current.
-            elif iTarget > current:
-                if abs(iTarget - current) < 0.05:
-                    current += slew*dt*0.01
-                elif abs(iTarget - current) < 0.25:
-                    current += slew*dt*0.1
-                elif abs(iTarget - current) < 1:
-                    current += slew*dt*0.25
-                else:
-                    current += slew*dt
-            #condition for negative ramping.
-            #extra cases within allow adjustment of ramp interval to more
-            #precisely reach set current.
+            #precisely reach set current.        
+            if abs(iTarget - current) < 0.005:
+                delta = slew*dt*0.001
+            elif abs(iTarget - current) < 0.05:
+                delta = slew*dt*0.01
+            elif abs(iTarget - current) < 0.25:
+                delta = slew*dt*0.1
+            elif abs(iTarget - current) < 1:
+                delta = slew*dt*0.25
+            else:
+                delta = slew*dt
+                
+            if iTarget > current:
+                current += delta
             elif iTarget < current:
-                if abs(iTarget - current) < 0.05:
-                    current -= slew*dt*0.01
-                elif abs(iTarget - current) < 0.25:
-                    current -= slew*dt*0.1
-                elif abs(iTarget - current) < 1:
-                    current -= slew*dt*0.25
-                else:
-                    current -= slew*dt
+                current -= delta
             else:
                 print('error: ramp error')     
+        elif abs(iTarget-current) <= 0.001 and 'ready' not in state \
+        and 'LOCAL' not in state and 'ramping' in state:
+            for element in state:
+                if element == 'ramping':
+                    state.remove('ramping')
+
         #changes ramp/slew rate of magnet
         if 'change slew' in state and MPSNotReady:
             slew = slewTarget
             state.remove('change slew')
+        
         #changes polarity of magnet
         if 'change polarity' in state and MPSNotReady:
-            if polTarget == '+' and iTarget <= 0:
+            if polTarget == '+':# and iTarget <= 0:
                 polarity = 1
-                iTarget = abs(iTarget)
-            elif polTarget == '-' and iTarget > 0:
-                polarity = -1
-                iTarget = iTarget*-1
+            elif polTarget == '-':# and iTarget > 0:
+                polarity = -1                
+            iTarget = abs(iTarget)*polarity
             state.remove('change polarity')
             state.append('ramping')       
-        #checks state list and declares PS ready if no other states are present.
+        
+        #checks state list and declares PS ready if no other states are present
         if len(state) == 0:
             state.append('ready')               
 
@@ -205,7 +200,7 @@ while cmd != 'STOP':
         print('status =',state)
         print()
         
-        ser.write(('I'+str(current)).encode())        
+        #ser.write(sstring2.encode())        
         
         count += 1        
         t1 = time.time()
@@ -214,16 +209,20 @@ while cmd != 'STOP':
     except KeyboardInterrupt:
         print('User Stop')
         cmd = 'STOP'
-    except:
-        print('ERROR')
-        ser.close()
+    except Exception as error:
+        print(error)
+        cmd = 'STOP'
 ser.close()
 
 if ser.is_open == False:
     print('Comms closed.')
 else:
-    print('Error')
+    print('Error; attempting to close comms again.')
     ser.close
 
 #%%
+#IF RUNNING IN IDE: if program hangs up or does not close properly,
+# line of code below must be used to close serial communication before starting
+# program again.
+# IF RUNNING IN SPYDER: put cursor in cell and hit ctrl+ENTER
 ser.close()
