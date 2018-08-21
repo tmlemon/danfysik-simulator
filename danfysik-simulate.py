@@ -22,15 +22,11 @@ def serialIntialize(port,timeout):
         sleep(1)
     except:
         print('Intialization Error')
-
     return ser
 
-#function to remove declared state from state list
-#def stateRemove(stateList,state):
-    
 #%%
 #sets up initial conditions for simulated power supply.
-ser = serialIntialize('COM1',1)
+ser = serialIntialize('COM1',0.99)
 
 #intial conditions on start up of simulated MPS
 state = ['ready']
@@ -146,14 +142,14 @@ while cmd != 'STOP':
         and 'LOCAL' not in state:# and 'ramping' in state:
             #extra cases within allow adjustment of ramp interval to more
             #precisely reach set current.        
-            if abs(iTarget - current) < 0.005:
-                delta = slew*dt*0.001
-            elif abs(iTarget - current) < 0.05:
-                delta = slew*dt*0.01
-            elif abs(iTarget - current) < 0.25:
-                delta = slew*dt*0.1
-            elif abs(iTarget - current) < 1:
-                delta = slew*dt*0.25
+            if abs(iTarget - current) < slew*0.005:
+                delta = 1*dt*0.001
+            elif abs(iTarget - current) < slew*0.05:
+                delta = slew*0.25*1*dt*0.01
+            elif abs(iTarget - current) < slew*0.25:
+                delta = slew*0.5*dt*0.1
+            elif abs(iTarget - current) < slew*1:
+                delta = slew*0.5*dt*0.25
             else:
                 delta = slew*dt
             #increments current to setpoint.
@@ -183,6 +179,7 @@ while cmd != 'STOP':
         print('target =',iTarget)
         print('control state =',ctrlState)
         print('status =',state)
+        print(dt)
         print()
         
         #ser.write(sstring2.encode())        
