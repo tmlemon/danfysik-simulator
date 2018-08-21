@@ -14,7 +14,6 @@ NI MAX VISA test panel can also be used.
 import serial
 import time
 from time import sleep
-import numpy as np
 
 #function intializess serial connection.
 def serialIntialize(port,timeout):
@@ -37,6 +36,7 @@ dt = timing #sec
 slew = 1 #A/sec
 current = 0 #A
 iTarget = 0 #A
+margin = 0.001
 polarity = 1
 ctrlState = 'REM'
 count = 0
@@ -110,7 +110,6 @@ while cmd != 'STOP':
                     if 'ramping' not in state:
                         state.append('ramping')
                     iTarget = float(cmd[3:].strip())*polarity
-                    #margin = 0.001
                 #changes ramp rate
                 elif 'W1' in cmd and 'ready' in state:
                     if 'ready' in state:
@@ -135,14 +134,13 @@ while cmd != 'STOP':
                 else:
                     print('error; unknown command')
             
-            
             #error error condition if somehow in a state other than REM or LOC
             else:
                 print('control mode error')
             
         #ramps magnet to set current
-        if abs(iTarget-current) > 0.001 and 'ramping' in state \
-        and 'LOCAL' not in state:# and 'ramping' in state:
+        if abs(iTarget-current) > margin and 'ramping' in state \
+        and 'LOCAL' not in state:
             #extra cases within allow adjustment of ramp interval to more
             #precisely reach set current.        
             if abs(iTarget - current) < slew*0.005:
@@ -162,11 +160,9 @@ while cmd != 'STOP':
                 current -= delta
             else:
                 print('error: ramp error')     
-        elif abs(iTarget-current) <= 0.001 and 'ready' not in state \
+        elif abs(iTarget-current) <= margin and 'ready' not in state \
         and 'LOCAL' not in state and 'ramping' in state:
             if 'ramping' in state:
-            #for element in state:
-                #if element == 'ramping':
                 state.remove('ramping')
         
         #checks state list and declares PS ready if no other states are present
@@ -181,7 +177,7 @@ while cmd != 'STOP':
         print('ramp rate =',slew)
         print('target =',iTarget)
         print('control state =',ctrlState)
-        print('status =',state)
+        print('status =',state[0])
         print()
         
         #ser.write(sstring2.encode())        
