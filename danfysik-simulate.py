@@ -14,6 +14,7 @@ NI MAX VISA test panel can also be used.
 import serial
 import time
 from time import sleep
+import numpy as np
 
 #function intializess serial connection.
 def serialIntialize(port,timeout):
@@ -25,12 +26,14 @@ def serialIntialize(port,timeout):
     return ser
 
 #%%
+timing = 0.15
+
 #sets up initial conditions for simulated power supply.
-ser = serialIntialize('COM1',0.99)
+ser = serialIntialize('COM1',timing)
 
 #intial conditions on start up of simulated MPS
 state = ['ready']
-dt = 1 #sec
+dt = timing #sec
 slew = 1 #A/sec
 current = 0 #A
 iTarget = 0 #A
@@ -44,7 +47,7 @@ t0 = time.time()
 # STOP condition coded into loop for development, will be removed and replaced
 # with condiction that fits PLC.
 while cmd != 'STOP':
-
+    tStart = time.time()
     sstring0 = ''+'\r'
     sstring1 = ''+'\r'
     sstring2 = 'I'+str(current)+'\r'
@@ -179,7 +182,6 @@ while cmd != 'STOP':
         print('target =',iTarget)
         print('control state =',ctrlState)
         print('status =',state)
-        print(dt)
         print()
         
         #ser.write(sstring2.encode())        
