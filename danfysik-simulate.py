@@ -25,7 +25,9 @@ def serialIntialize(port,timeout):
 
     return ser
 
-   
+#function to remove declared state from state list
+#def stateRemove(stateList,state):
+    
 #%%
 #sets up initial conditions for simulated power supply.
 ser = serialIntialize('COM1',1)
@@ -63,11 +65,18 @@ while cmd != 'STOP':
         if cmd != '':
             #looks for command to put MPS in local or remote control mode
             if cmd == 'LOC' or cmd == 'REM':
-                for i,element in enumerate(state):
-                        if element == 'ready':
-                            state.remove('ready')
-                state.append('change control')
                 ctrlState = cmd
+                if 'ready' in state:
+                    state.remove('ready')
+                if cmd == 'LOC':
+                    #case used for situations where already in local mode.
+                    if 'LOCAL' not in state:
+                        state.append('LOCAL')
+                elif cmd == 'REM':
+                    #case used for when already in remote mode.
+                    if 'LOCAL' in state:
+                        state.remove('LOCAL')
+                        state.append('ready')
             #Status readback commands that should always work, regardless of
             #control state.
             elif cmd == 'AD 8':
@@ -86,65 +95,55 @@ while cmd != 'STOP':
                 ser.write(sstring8.encode())
             elif cmd == 'S1':
                 ser.write(sstring9.encode())
-            
+            #gives message if in local mode
+            elif 'LOCAL' in state:
+                print('in local control mode')
             #Only listen to/add commands to state if not in local mode.
             elif 'LOCAL' not in state:
                 #Stop condititon, closes serial comms and stops loop.
                 if cmd == 'STOP':
                         print('Closing comms')       
-                #Sets up to ramp magnet
-                elif 'WA' in cmd:
-                    for i,element in enumerate(state):
-                            if element == 'ready':
-                                state.remove('ready')
+                #Sets up to ramp magnet. magnet ramp occurs in case after
+                #intial message check.
+                elif 'WA' in cmd and 'LOCAL' not in state:
+                    if 'ready' in state:
+                        state.remove('ready')
                     if 'ramping' not in state:
                         state.append('ramping')
                     iTarget = float(cmd[3:].strip())*polarity
                     #margin = 0.001
-                
                 #changes ramp rate
-                elif 'W1' in cmd:
-                    for i,element in enumerate(state):
-                        if element == 'ready':
-                            state.remove('ready')
-                    state.append('change slew')
-                    slewTarget = float(cmd[3:].strip())                 
-                
+                elif 'W1' in cmd and 'ready' in state:
+                    if 'ready' in state:
+                        state.remove('ready')
+                    slew = float(cmd[3:].strip())
                 #change polarity
-                elif 'PO' in cmd and len(cmd) > 2:
-                    for i,element in enumerate(state):
-                        if element == 'ready':
-                            state.remove('ready')
-                        state.append('change polarity')
-                    polTarget = cmd[3:].strip()               
-                
+                elif 'PO' in cmd and len(cmd) > 2 and 'ready' in state:
+                    state.remove('ready')
+                    if cmd[3:].strip() == '+':
+                        polarity = 1
+                    elif cmd[3:].strip() == '-':
+                        polarity = -1
+                    else:
+                        print('polarity error')
+                        polarity = 1
+                    iTarget = abs(iTarget)*polarity
+                    state.append('ramping')                    
+                #message for action commands given when MPS is not ready
+                elif cmd != '' and 'ready' not in state:
+                    print('MPS not ready')
+                #error condition for unknown commands
                 else:
                     print('error; unknown command')
             
-            elif 'LOCAL' in state:
-                print('in local control mode')
             
+            #error error condition if somehow in a state other than REM or LOC
             else:
                 print('control mode error')
             
-        #boolean status to determine whether MPS is ready to receive new
-        # commands.
-        MPSNotReady = 'ready' not in state and 'ramping' not in state \
-            and 'LOCAL' not in state
-
-        #changes to local/remote control mode
-        if 'change control' in state and 'ready' not in state \
-        and 'ramping' not in state:
-            state.remove('change control')
-            if ctrlState == 'LOC':
-                state.append('LOCAL')
-            elif ctrlState == 'REM':
-                state.remove('LOCAL')
-                state.append('ready')
-        
         #ramps magnet to set current
-        if abs(iTarget-current) > 0.001 and 'ready' not in state \
-        and 'LOCAL' not in state and 'ramping' in state:
+        if abs(iTarget-current) > 0.001 and 'ramping' in state \
+        and 'LOCAL' not in state:# and 'ramping' in state:
             #extra cases within allow adjustment of ramp interval to more
             #precisely reach set current.        
             if abs(iTarget - current) < 0.005:
@@ -157,7 +156,7 @@ while cmd != 'STOP':
                 delta = slew*dt*0.25
             else:
                 delta = slew*dt
-                
+            #increments current to setpoint.
             if iTarget > current:
                 current += delta
             elif iTarget < current:
@@ -166,24 +165,10 @@ while cmd != 'STOP':
                 print('error: ramp error')     
         elif abs(iTarget-current) <= 0.001 and 'ready' not in state \
         and 'LOCAL' not in state and 'ramping' in state:
-            for element in state:
-                if element == 'ramping':
-                    state.remove('ramping')
-
-        #changes ramp/slew rate of magnet
-        if 'change slew' in state and MPSNotReady:
-            slew = slewTarget
-            state.remove('change slew')
-        
-        #changes polarity of magnet
-        if 'change polarity' in state and MPSNotReady:
-            if polTarget == '+':# and iTarget <= 0:
-                polarity = 1
-            elif polTarget == '-':# and iTarget > 0:
-                polarity = -1                
-            iTarget = abs(iTarget)*polarity
-            state.remove('change polarity')
-            state.append('ramping')       
+            if 'ramping' in state:
+            #for element in state:
+                #if element == 'ramping':
+                state.remove('ramping')
         
         #checks state list and declares PS ready if no other states are present
         if len(state) == 0:
@@ -210,7 +195,7 @@ while cmd != 'STOP':
         print('User Stop')
         cmd = 'STOP'
     except Exception as error:
-        print(error)
+        raise
         cmd = 'STOP'
 ser.close()
 
