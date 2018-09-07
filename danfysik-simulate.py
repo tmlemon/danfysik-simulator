@@ -24,8 +24,15 @@ def serialIntialize(port,timeout):
         print('Intialization Error')
     return ser
 
+#function to somewhat simplify code line for writing to serial and made it 
+#more obvious what is being written.
+def serialWrite(string):
+    ser.write(string.encode())
+    return 1
+
+
 #%%
-timing = 0.15
+timing = 1
 
 #sets up initial conditions for simulated power supply.
 ser = serialIntialize('COM1',timing)
@@ -47,7 +54,6 @@ t0 = time.time()
 # STOP condition coded into loop for development, will be removed and replaced
 # with condiction that fits PLC.
 while cmd != 'STOP':
-    tStart = time.time()
     sstring0 = ''+'\r'
     sstring1 = ''+'\r'
     sstring2 = 'I'+str(current)+'\r'
@@ -67,33 +73,31 @@ while cmd != 'STOP':
                 ctrlState = cmd
                 if 'ready' in state:
                     state.remove('ready')
-                if cmd == 'LOC':
+                if cmd == 'LOC' and 'LOCAL' not in state:
                     #case used for situations where already in local mode.
-                    if 'LOCAL' not in state:
-                        state.append('LOCAL')
-                elif cmd == 'REM':
+                    state.append('LOCAL')
+                elif cmd == 'REM' and 'LOCAL' in state:
                     #case used for when already in remote mode.
-                    if 'LOCAL' in state:
-                        state.remove('LOCAL')
-                        state.append('ready')
+                    state.remove('LOCAL')
+                    state.append('ready')
             #Status readback commands that should always work, regardless of
             #control state.
             elif cmd == 'AD 8':
-                ser.write(sstring2.encode())
+                serialWrite(sstring2)
             elif cmd == 'AD 0':
-                ser.write(sstring3.encode())
+                serialWrite(sstring3)
             elif cmd == 'AD 2':
-                ser.write(sstring4.encode())
+                serialWrite(sstring4)
             elif cmd == 'PO':
-                ser.write(sstring5.encode())
+                serialWrite(sstring5)
             elif cmd == 'RA':
-                ser.write(sstring6.encode())
+                serialWrite(sstring6)
             elif cmd == 'R3':
-                ser.write(sstring7.encode())
+                serialWrite(sstring7)
             elif cmd == 'CMDSTATE':
-                ser.write(sstring8.encode())
+                serialWrite(sstring8)
             elif cmd == 'S1':
-                ser.write(sstring9.encode())
+                serialWrite(sstring9)
             #gives message if in local mode
             elif 'LOCAL' in state:
                 print('in local control mode')
@@ -104,7 +108,7 @@ while cmd != 'STOP':
                         print('Closing comms')       
                 #Sets up to ramp magnet. magnet ramp occurs in case after
                 #intial message check.
-                elif 'WA' in cmd and 'LOCAL' not in state:
+                elif 'WA' in cmd:
                     if 'ready' in state:
                         state.remove('ready')
                     if 'ramping' not in state:
@@ -112,8 +116,7 @@ while cmd != 'STOP':
                     iTarget = float(cmd[3:].strip())*polarity
                 #changes ramp rate
                 elif 'W1' in cmd and 'ready' in state:
-                    if 'ready' in state:
-                        state.remove('ready')
+                    state.remove('ready')
                     slew = float(cmd[3:].strip())
                 #change polarity
                 elif 'PO' in cmd and len(cmd) > 2 and 'ready' in state:
@@ -143,14 +146,20 @@ while cmd != 'STOP':
         and 'LOCAL' not in state:
             #extra cases within allow adjustment of ramp interval to more
             #precisely reach set current.        
+        
+            '''
+            2018-09-05
+            NEED TO TEST CHANGES TO DELTAS BELOW
+            '''
+        
             if abs(iTarget - current) < slew*0.005:
-                delta = 1*dt*0.001
+                delta = dt*0.001
             elif abs(iTarget - current) < slew*0.05:
-                delta = slew*0.25*1*dt*0.01
+                delta = slew*dt*0.01    #0.0025
             elif abs(iTarget - current) < slew*0.25:
-                delta = slew*0.5*dt*0.1
+                delta = slew*dt*0.05 #0.05
             elif abs(iTarget - current) < slew*1:
-                delta = slew*0.5*dt*0.25
+                delta = slew*dt*0.2    #0.125
             else:
                 delta = slew*dt
             #increments current to setpoint.
@@ -162,8 +171,7 @@ while cmd != 'STOP':
                 print('error: ramp error')     
         elif abs(iTarget-current) <= margin and 'ready' not in state \
         and 'LOCAL' not in state and 'ramping' in state:
-            if 'ramping' in state:
-                state.remove('ramping')
+            state.remove('ramping')
         
         #checks state list and declares PS ready if no other states are present
         if len(state) == 0:
@@ -192,7 +200,8 @@ while cmd != 'STOP':
     except Exception as error:
         raise
         cmd = 'STOP'
-ser.close()
+ser.close() # <-- if program hangs up during development using Spyder, put 
+# cursor on this line and press F9.
 
 if ser.is_open == False:
     print('Comms closed.')
